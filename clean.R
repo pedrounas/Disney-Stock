@@ -1,3 +1,6 @@
+# Load file with the functions
+source('helper.R')
+
 # Install and initialize all libraries
 list.of.packages <- c("tidyverse", "forecast", "dplyr","astsa", "xts", "tseries")
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
@@ -24,80 +27,72 @@ dis_train <- window(dis, start=index(first(dis)), end=index(first(dis_test)) - 1
 
 acf2(dis_train) # Indica um AR(1) mas que necessitará de diferenciação.
 # Box.test(dis_ar1$fit, type='Ljung') # Rejeitamos H0 
-dis_ar1 <- sarima(dis_train, 1, 0,0)
-dis_pred_ar1 <- sarima.for(dis_train, 12, 1,0,0)
+dis_arima <- sarima(dis_train, 1,0,0)
+dis_pred_arima <- sarima.for(dis_train, 12, 1,0,0)
 dis_es_holt <- holt(dis_train, beta = 0.01914, h = 12) # Beta encontrado usando uma função auxiliar
-dis_es_holt$mean
+autoplot(dis_es_holt)
 
 results <- data.frame(Values <- dis_test)
-results$AR1 <- dis_pred_ar1$pred
+results$ARIMA <- dis_pred_arima$pred
 temp <- as.data.frame(dis_es_holt$mean)
 temp <- as.numeric(temp$x)
 results$ES <- temp
 results
 
-# Após produção das tabelas comparar o error percentual médio
-mean(inter$`Percentual Error`)
-mean(inter_es$`Percentual Error`)
+arima_table(dis_pred_arima, dis_test)
+es_table(dis_es_holt, dis_test)
 
 # 2 Abordagem - Log Transform
 
-# 3 Abordagem - Differenciação
-
-# Log-Transform
 dis_log <- log(dis)
+dis_test_log <- last(dis_log,'12 month')
+dis_train_log <- window(dis_log, start=index(first(dis_log)), end=index(first(dis_test_log)) - 1)
 
-# Divide into train and test data
-dis_test <- last(dis_diff,'12 month')
-dis_train <- window(dis_diff, start=index(first(dis)), end=index(first(dis_test)) - 1)
+acf2(dis_train_log) # Ii
+auto.arima(dis_train_log, seasonal = F)
 
-# Ljung-Box test
-Box.test(dis_train, type='Ljung')
+dis_log_arima <- sarima(dis_train_log, 1, 1, 3)
+dis_log_pred_arima <- sarima.for(dis_train_log, 12, 1, 1 ,3)
 
+beta_ <- find_beta(dis_train_log, dis_test_log)
 
-# Testing
+dis_log_es_holt <- holt(dis_train_log, beta = beta_, h = 12)
+autoplot(dis_log_es_holt)
 
-# Produzir tabela ARIMA
-high <- dis_pred_ar1$pred + 1.96*dis_pred_ar1$se
-low <- dis_pred_ar1$pred - 1.96*dis_pred_ar1$se
+results_log <- data.frame(Values <- dis_test_log)
+results_log$ARIMA <- dis_log_pred_arima$pred
+temp <- as.data.frame(dis_log_es_holt$mean)
+temp <- as.numeric(temp$x)
+results_log$ES <- temp
+results_log
 
-inter <- data.frame(low, high)
+arima_table(dis_log_pred_arima, dis_test_log)
+es_table(dis_log_es_holt, dis_test_log)
 
-inter[,(ncol(inter)+1)] = (coredata(dis_test) > inter$low & coredata(dis_test) < inter$high)[,1]
-inter[,(ncol(inter)+1)] = coredata(dis_test)
-inter[,(ncol(inter)+1)] = dis_pred_ar1$pred
-inter[,(ncol(inter)+1)] = abs(coredata(dis_test) - dis_pred_ar1$pred)/coredata(dis_test)
+# 3 Abordagem - Differenciação
+ndiffs(dis) # Diz-nos que precisamos de diferenciar 2 vezes
+dis_diff <- diff(dis)[-1,]
+dis_diff <- diff(dis_diff)[-1,]
 
-colnames(inter)[3] = "Contains"
-colnames(inter)[4] = "Observed value"
-colnames(inter)[5] = "Forecast"
-colnames(inter)[6] = "Percentual Error"
-inter
+dis_test_diff <- last(dis_diff,'12 month')
+dis_train_diff <- window(dis_diff, start=index(first(dis_diff)), end=index(first(dis_test_diff)) - 1)
+acf2(dis_train_diff) # Parece indicar um ARIMA(4,0,0)
 
-# Produzir tabela ES
-high_es <- dis_es_holt$upper[,2]
-low_es <- dis_es_holt$lower[,2]
-inter_es <- data.frame(low_es, high_es)
+auto.arima(dis_train_diff, trace=T) # Confirma a nossa hipótese de ARIMA(4,0,0)
 
-inter_es[,(ncol(inter_es)+1)] = (coredata(dis_test) > inter_es$low & coredata(dis_test) < inter_es$high)[,1]
-inter_es[,(ncol(inter_es)+1)] = coredata(dis_test)
-inter_es[,(ncol(inter_es)+1)] = dis_es_holt$mean
-inter_es[,(ncol(inter_es)+1)] = abs(coredata(dis_test) - dis_es_holt$mean)/coredata(dis_test)
+dis_diff_arima <- sarima(dis_train_diff, 4, 0 ,0)
+dis_diff_pred_arima <- sarima.for(dis_train_diff,12,4,0,0)
 
-colnames(inter_es)[3] = "Contains"
-colnames(inter_es)[4] = "Observed value"
-colnames(inter_es)[5] = "Forecast"
-colnames(inter_es)[6] = "Percentual Error"
-inter_es
+alpha_ <- find_alpha(dis_train_diff, dis_test_diff)
+dis_diff_es <- ses(dis_train_diff, alpha = alpha_, h = 12)
+autoplot(dis_diff_es)
 
-# Encontrar menor beta
-beta <- seq(.0001, .5, by = .001)
-RMSE <- NA
-for(i in seq_along(beta)) {
-  fit <- holt(dis_train, beta = beta[i], h = 100)
-  RMSE[i] <- accuracy(fit, dis_test)[2,2]
-}
+results_diff <- data.frame(Values <- dis_test_diff)
+results_diff$ARIMA <- dis_diff_pred_arima$pred
+temp <- as.data.frame(dis_diff_es$mean)
+temp <- as.numeric(temp$x)
+results_diff$ES <- temp
+results_diff
 
-beta.fit <- data_frame(beta, RMSE)
-beta.min <- filter(beta.fit, RMSE == min(RMSE))
-beta.min
+arima_table(dis_diff_pred_arima, dis_test_diff)
+es_table(dis_diff_es, dis_test_diff)

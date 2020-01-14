@@ -55,3 +55,17 @@ find_beta <- function(data, training) {
   beta.min <- filter(beta.fit, RMSE == min(RMSE))
   return(beta.min$beta)
 }
+
+find_alpha <- function(data, training) {
+
+  alpha <- seq(.01, .99, by = .01)
+  RMSE <- NA
+  for(i in seq_along(alpha)) {
+    fit <- ses(data, alpha = alpha[i], h = 100)
+    RMSE[i] <- accuracy(fit, training)[2,2]
+  }
+  
+  alpha.fit <- tibble(alpha, RMSE)
+  alpha.min <- filter(alpha.fit, RMSE == min(RMSE))
+  return(alpha.min$alpha)
+}
