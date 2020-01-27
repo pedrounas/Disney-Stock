@@ -1,5 +1,7 @@
 # Produzir a tabela de resultados do modelo ARIMA
 
+library(ggplot2)
+
 arima_table <- function(predictions, data) {
   
   high <- predictions$pred + 1.96*predictions$se
@@ -58,7 +60,7 @@ find_beta <- function(data, training) {
 
 find_alpha <- function(data, training) {
 
-  alpha <- seq(.01, .99, by = .01)
+  alpha <- seq(.0001, .99, by = .001)
   RMSE <- NA
   for(i in seq_along(alpha)) {
     fit <- ses(data, alpha = alpha[i], h = 100)
